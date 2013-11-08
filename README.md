@@ -25,9 +25,10 @@ First you must create server class and derive it from GXDLMSServerBase to add su
 Then you must create server media to listen incoming DLMS messages.
 
 
-```c#
+```C++
 
-public class GXDLMSExampleServer : GXDLMSServerBase
+class GXDLMSExampleServer : CGXDLMSServerBase, 
+					IGXMediaListener, IGXNetListener
 
 ```
 
@@ -35,24 +36,55 @@ First you must tell what objects meter offers.
 You can also set default or static values here.
 Create media component here and start listen incoming data.
 
-```c#
-public void Initialize(int port) throws IOException
+```C++
+/// <summary>
+/// Generic initialize for all servers.
+/// </summary>
+/// <param name="server"></param>
+int CGXDLMSBase::Init(int port)
 {
-	Media = new GXNet(NetworkType.Tcp, port);
-    Media.OnReceived += new Gurux.Common.ReceivedEventHandler(OnReceived);
-    Media.OnClientConnected += new Gurux.Common.ClientConnectedEventHandler(OnClientConnected);
-    Media.OnClientDisconnected += new Gurux.Common.ClientDisconnectedEventHandler(OnClientDisconnected);
-    Media.OnError += new Gurux.Common.ErrorEventHandler(OnError);
-    Media.Open();
-    ///////////////////////////////////////////////////////////////////////
+	m_Media.SetProtocol(GX_NW_TCPIP);
+	m_Media.SetPort(port);
+	m_Media.SetTrace(GX_TRACE_LEVEL_VERBOSE);
+	m_Media.IsServer(true);
+    m_Media.AddListener(this);
+	int ret;
+    if ((ret = m_Media.Open()) != 0)
+	{
+		printf("Media open failed %d", ret);
+		return ret;
+	}	
+	///////////////////////////////////////////////////////////////////////
     //Add Logical Device Name. 123456 is meter serial number.
-    GXDLMSData d = new GXDLMSData("0.0.42.0.0.255");
-    d.Value = "Gurux123456";
-    //Set access right. Client can't change Device name.
-    d.SetAccess(2, AccessMode.READ);
-    Items.Add(d);
+	///////////////////////////////////////////////////////////////////////
+	// COSEM Logical Device Name is defined as an octet-string of 16 octets.
+	// The first three octets uniquely identify the manufacturer of the device and it corresponds
+	// to the manufacturer's identification in IEC 62056-21.
+	// The following 13 octets are assigned by the manufacturer.
+	//The manufacturer is responsible for guaranteeing the uniqueness of these octets.
+	CGXDLMSVariant id2(serialNo.c_str());
+	id2.ChangeType(DLMS_DATA_TYPE_UINT32);
+	std::string tmp("GRX");
+	for(int a = serialNo.length(); a < 13; ++a)
+	{
+		tmp.append("0");
+	}
+	tmp.append(serialNo);
+	CGXDLMSVariant id(tmp.c_str());
+	id.ChangeType(DLMS_DATA_TYPE_OCTET_STRING);
+	CGXDataObject* d = new CGXDataObject("0.0.42.0.0.255", id);
+	//d->GetAttributes().push_back(CGXDLMSAttribute(2, DLMS_DATA_TYPE_OCTET_STRING));
+	GetItems().push_back(d);
+	// Electricity ID 1
+	d = new CGXDataObject("1.1.0.0.0.255", tmp.c_str());
+	d->GetAttributes().push_back(CGXDLMSAttribute(2, DLMS_DATA_TYPE_STRING));
+	GetItems().push_back(d);
+	// Electricity ID 2
+	d = new CGXDataObject("1.1.0.0.1.255", id2);
+	d->GetAttributes().push_back(CGXDLMSAttribute(2, DLMS_DATA_TYPE_UINT32));
+	GetItems().push_back(d);	    
+	return ERROR_CODES_OK;
 }
-
 ```
 
 Read method is called when client wants to read some data from the meter.
@@ -61,22 +93,25 @@ Otherwice you can just set value that you want to return.
 In this example we will return current time for the clock.
 Otherwise we will return attribute value of the object.
 
-```c#
+```C++
 
-public override void Read(ValueEventArgs e)
+int CGXDLMSBase::OnRead(CGXObject* pItem, int index, CGXDLMSVariant& value, DLMS_DATA_TYPE& type)
 {
-    if(e.Target is GXDLMSClock)
+	//Let framework handle Logical Name read.
+	if (index == 1)
+	{
+		return ERROR_CODES_FALSE;
+	}	
+	//Framework will handle Association objects automatically.
+	if (pItem->GetObjectType() == OBJECT_TYPE_ASSOCIATION_LOGICAL_NAME ||
+		pItem->GetObjectType() == OBJECT_TYPE_ASSOCIATION_SHORT_NAME ||
+		//Framework will handle profile generic automatically.
+		pItem->GetObjectType() == OBJECT_TYPE_PROFILE_GENERIC)                
     {
-        //Implement spesific clock handling here.    
-        //Otherwice initial values are used.      
-        if (e.Index == 2)
-        {
-            e.Value = DateTime.Now;
-            e.Handled = true;
-            return;
-        }
+        return ERROR_CODES_FALSE;
     }
-    e.Handled = false;
+    //Implement read handling.
+    return ERROR_CODES_FALSE;
 }
 
 ```
@@ -84,10 +119,11 @@ public override void Read(ValueEventArgs e)
 Write method is called when client wants to write some data to the meter.
 You can handle write by yourself or let the framework handle it.
 
-```c#
+```C++
 
-public override void Write(ValueEventArgs e)
-{    
+int CGXDLMSBase::OnWrite(CGXObject* pItem, int index, CGXDLMSVariant& value)
+{
+	return ERROR_CODES_FALSE;
 }
 
 ```
@@ -95,11 +131,11 @@ public override void Write(ValueEventArgs e)
 Action method is called when client performs action like reset.
 You can handle actions by yourself or let the framework handle it.
 
-```c#
+```C++
 
-public override void Action(ValueEventArgs e)
+int CGXDLMSBase::OnAction(CGXObject* pItem, int index, CGXDLMSVariant& data)
 {
-        
+	return ERROR_CODES_FALSE;
 }
 
 ```
@@ -114,41 +150,34 @@ This is for the security. Client can't try to find meters just polling different
 
 ```
 
-/// <summary>
-/// Client has send data.
-/// </summary>
-/// <param name="sender"></param>
-/// <param name="e"></param>
-void OnReceived(object sender, Gurux.Common.ReceiveEventArgs e)
+/** 
+ Media component sends received data through this method.
+
+ @param sender The source of the event.
+ @param e Event arguments.
+*/
+void OnReceived(IGXMedia* pSender, CReceiveEventArgs& e)
 {
-    try
+	unsigned char* pReply = NULL;
+	int size = 0;
+	HandleRequest(e.getData(), pReply, size);
+    //Reply is null if we do not want to send any data to the client.
+    //This is done if client try to make connection with wrong server or client address.
+    if (size != 0)
     {
-        lock (this)
-        {
-            byte[] reply = HandleRequest((byte[])e.Data);
-            //Reply is null if we do not want to send any data to the client.
-            //This is done if client try to make connection with wrong device ID.
-            if (reply != null)
-            {
-                Media.Send(reply, e.SenderInfo);
-            }
-        }
+        m_Media.Send(pReply, size, e.getSenderInfo());
     }
-    catch (Exception ex)
-    {
-        Console.WriteLine(ex.Message);
-    }
-}       
+}     
 
 ```
 
 On error is called if media causes error.
 
-```c#
+```C++
 
-void OnError(object sender, Exception ex)
+void OnError(IGXMedia* pSender, basic_string<char>& ex)
 {
-    System.Diagnostics.Debug.WriteLine(ex.Message);
+	printf("Error has occurred : %s\r\n", ex.c_str());
 }
 
 ```
@@ -156,16 +185,11 @@ void OnError(object sender, Exception ex)
 When client is making connection onClientConnected method is called. 
 You can example write log here.
 
-```c#
+```C++
 
-/// <summary>
-/// Client has made connection.
-/// </summary>
-/// <param name="sender"></param>
-/// <param name="e"></param>
-void OnClientConnected(object sender, Gurux.Common.ConnectionEventArgs e)
+void OnClientConnected(IGXMedia* pSender, CConnectionEventArgs& e)
 {
-    Console.WriteLine("Client Connected.");
+	printf("Client Connected : %s\r\n", e.GetInfo().c_str());
 }
 
 ```
@@ -174,17 +198,14 @@ When client is closing connection onClientDisconnected method is called.
 It is important that yo call reset method here to reset all connection settings.
 
 
-```c#
+```C++
 
-/// <summary>
-/// Client has close connection.
-/// </summary>
-/// <param name="sender"></param>
-/// <param name="e"></param>
-void OnClientDisconnected(object sender, Gurux.Common.ConnectionEventArgs e)
+/**
+ Called when the client has been disconnected from the GXNet server.
+ @param pSender The source of the event.    
+ @param e Event arguments.
+*/
+void OnClientDisconnected(IGXMedia* pSender, CConnectionEventArgs& e)
 {
-    //Reset server settings when connection closed.
-    this.Reset();
-    Console.WriteLine("Client Disconnected.");
-}
-```
+	printf("Client Disonnected : %s\r\n", e.GetInfo().c_str());
+}```
