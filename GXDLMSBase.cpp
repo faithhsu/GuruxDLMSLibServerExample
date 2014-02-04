@@ -35,11 +35,11 @@
 #include "stdafx.h"
 #include "GXDLMSBase.h"
 #include "GuruxDLMS/GXDateTime.h"
-#include "GuruxDLMS/Objects/GXDataObject.h"
-#include "GuruxDLMS/Objects/GXRegisterObject.h"
-#include "GuruxDLMS/Objects/GXClockObject.h"
-#include "GuruxDLMS/Objects/GXTcpUdpSetupObject.h"
-#include "GuruxDLMS/Objects/GXProfileGenericObject.h"
+#include "GuruxDLMS/Objects/GXDLMSData.h"
+#include "GuruxDLMS/Objects/GXDLMSRegister.h"
+#include "GuruxDLMS/Objects/GXDLMSClock.h"
+#include "GuruxDLMS/Objects/GXDLMSTcpUdpSetup.h"
+#include "GuruxDLMS/Objects/GXDLMSProfileGeneric.h"
 #include "GuruxDLMS/Objects/GXDLMSAutoConnect.h"
 #include "GuruxDLMS/Objects/GXDLMSIECOpticalPortSetup.h"
 #include "GuruxDLMS/Objects/GXDLMSActivityCalendar.h"    		
@@ -88,31 +88,31 @@ int CGXDLMSBase::Init(int port)
 	tmp.append(serialNo);
 	CGXDLMSVariant id(tmp.c_str());
 	id.ChangeType(DLMS_DATA_TYPE_OCTET_STRING);
-	CGXDataObject* d = new CGXDataObject("0.0.42.0.0.255", id);
+	CGXDLMSData* d = new CGXDLMSData("0.0.42.0.0.255", id);
 	//d->GetAttributes().push_back(CGXDLMSAttribute(2, DLMS_DATA_TYPE_OCTET_STRING));
 	GetItems().push_back(d);
 	// Electricity ID 1
-	d = new CGXDataObject("1.1.0.0.0.255", tmp.c_str());
+	d = new CGXDLMSData("1.1.0.0.0.255", tmp.c_str());
 	d->GetAttributes().push_back(CGXDLMSAttribute(2, DLMS_DATA_TYPE_STRING));
 	GetItems().push_back(d);
 	// Electricity ID 2
-	d = new CGXDataObject("1.1.0.0.1.255", id2);
+	d = new CGXDLMSData("1.1.0.0.1.255", id2);
 	d->GetAttributes().push_back(CGXDLMSAttribute(2, DLMS_DATA_TYPE_UINT32));
 	GetItems().push_back(d);	
     //Add Last avarage.
-    CGXRegisterObject* pRegister = new CGXRegisterObject("1.1.21.25.0.255");
+    CGXDLMSRegister* pRegister = new CGXDLMSRegister("1.1.21.25.0.255");
     //Set access right. Client can't change Device name.
     pRegister->SetAccess(2, ACCESSMODE_READ);
     GetItems().push_back(pRegister);	
     //Add default clock. Clock's Logical Name is 0.0.1.0.0.255.
-	CGXClockObject* pClock = new CGXClockObject();
+	CGXDLMSClock* pClock = new CGXDLMSClock();
 	CGXDateTime begin(-1, 9, 1, -1, -1, -1, -1);
 	pClock->SetBegin(begin);
 	CGXDateTime end(-1, 3, 1, -1, -1, -1, -1);
     pClock->SetEnd(end);
     GetItems().push_back(pClock);
     //Add Tcp/Udp setup. Default Logical Name is 0.0.25.0.0.255.
-    GetItems().push_back(new CGXTcpUdpSetupObject());
+    GetItems().push_back(new CGXDLMSTcpUdpSetup());
 	/*
     ///////////////////////////////////////////////////////////////////////
     //Add Load profile.
@@ -207,9 +207,12 @@ int CGXDLMSBase::Init(int port)
 	mv.Update(pRegister, 2);
     pRm->SetMonitoredValue(mv);
 	CGXDLMSActionSet action;
-	action.GetActionDown().SetLogicalName(pRm->GetLogicalName());
+	string ln;
+	pRm->GetLogicalName(ln);
+	action.GetActionDown().SetLogicalName(ln);
 	action.GetActionDown().SetScriptSelector(1);
-	action.GetActionUp().SetLogicalName(pRm->GetLogicalName());
+	pRm->GetLogicalName(ln);
+	action.GetActionUp().SetLogicalName(ln);
 	action.GetActionUp().SetScriptSelector(1);
 	vector<CGXDLMSActionSet> actions;
 	actions.push_back(action);
@@ -282,7 +285,7 @@ int CGXDLMSBase::Init(int port)
 /////////////////////////////////////////////////////////////////////////////
 // 
 /////////////////////////////////////////////////////////////////////////////
-int CGXDLMSBase::OnRead(CGXObject* pItem, int index, CGXDLMSVariant& value, DLMS_DATA_TYPE& type)
+int CGXDLMSBase::OnRead(CGXDLMSObject* pItem, int index, CGXDLMSVariant& value, DLMS_DATA_TYPE& type)
 {
 	//Let framework handle Logical Name read.
 	if (index == 1)
@@ -297,8 +300,11 @@ int CGXDLMSBase::OnRead(CGXObject* pItem, int index, CGXDLMSVariant& value, DLMS
     {
         return ERROR_CODES_FALSE;
     }
-	if ((pItem->GetUIDataType(index) == DLMS_DATA_TYPE_DATETIME || 
-        pItem->GetDataType(index) == DLMS_DATA_TYPE_DATETIME) &&
+	DLMS_DATA_TYPE ui, dt;
+	pItem->GetUIDataType(index, ui);
+	pItem->GetDataType(index, dt);
+	if ((ui == DLMS_DATA_TYPE_DATETIME || 
+        dt == DLMS_DATA_TYPE_DATETIME) &&
 		pItem->GetObjectType() != OBJECT_TYPE_CLOCK)
     {
 		value = CGXDateTime::Now();
@@ -322,18 +328,19 @@ int CGXDLMSBase::OnRead(CGXObject* pItem, int index, CGXDLMSVariant& value, DLMS
 			value.vt = DLMS_DATA_TYPE_ARRAY;			
 			pRm->GetThresholds().clear();
 			pRm->GetThresholds().push_back(rand() % 100 + 1);
-			return pRm->GetValue(index, NULL, 0, value, type);
+			return pRm->GetValue(index, NULL, 0, value);
 		}
     }
     else
     {
-		int ret = ((IGXDLMSBase*) pItem)->GetValue(index, NULL, 0, value, type);
+		int ret = ((IGXDLMSBase*) pItem)->GetValue(index, NULL, 0, value);
 		if (ret != ERROR_CODES_OK)
 		{
 			return ret;
 		}
         //If data is not assigned and value type is unknown return number.            
-		DLMS_DATA_TYPE tp = pItem->GetDataType(index);
+		DLMS_DATA_TYPE tp;
+		pItem->GetDataType(index, tp);
 		if (value.vt == DLMS_DATA_TYPE_NONE &&
 			(tp == DLMS_DATA_TYPE_NONE ||
             tp == DLMS_DATA_TYPE_INT8 || 
@@ -363,7 +370,7 @@ int CGXDLMSBase::OnRead(CGXObject* pItem, int index, CGXDLMSVariant& value, DLMS
 /////////////////////////////////////////////////////////////////////////////
 // 
 /////////////////////////////////////////////////////////////////////////////
-int CGXDLMSBase::OnWrite(CGXObject* pItem, int index, CGXDLMSVariant& value)
+int CGXDLMSBase::OnWrite(CGXDLMSObject* pItem, int index, CGXDLMSVariant& value)
 {
 	return ERROR_CODES_FALSE;
 }
@@ -371,7 +378,7 @@ int CGXDLMSBase::OnWrite(CGXObject* pItem, int index, CGXDLMSVariant& value)
 /////////////////////////////////////////////////////////////////////////////
 // 
 /////////////////////////////////////////////////////////////////////////////
-int CGXDLMSBase::OnAction(CGXObject* pItem, int index, CGXDLMSVariant& data)
+int CGXDLMSBase::OnAction(CGXDLMSObject* pItem, int index, CGXDLMSVariant& data)
 {
 	return ERROR_CODES_FALSE;
 }

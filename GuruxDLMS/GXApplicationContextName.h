@@ -34,52 +34,61 @@
 
 #pragma once
 
-#include "GXDLMSObject.h"
+const unsigned char LogicalNameObjectID[7] = {0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01};
+const unsigned char ShortNameObjectID[7] = {0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x02};
 
-class CGXDLMSMonitoredValue
+class CGXApplicationContextName
 {
-	OBJECT_TYPE m_ObjectType;
-    basic_string<char> m_LogicalName;
-    int m_AttributeIndex;
 public:
+	//Constructor
+	CGXApplicationContextName() : UseLN(false)
+	{		
 
-	CGXDLMSMonitoredValue()
+	}
+	int CodeData(std::vector<unsigned char>& buff)
 	{
-		m_ObjectType = OBJECT_TYPE_NONE;
-		m_AttributeIndex = 0;
+		buff.push_back(0xA1); //Application context name tag
+		buff.push_back(0x09); //Len
+		buff.push_back(0x6);
+		buff.push_back(7); //Len
+		if (UseLN)
+		{
+			GXHelpers::AddRange(buff, LogicalNameObjectID, 7);
+		}
+		else
+		{
+			GXHelpers::AddRange(buff, ShortNameObjectID, 7);
+		}
+		return ERROR_CODES_OK;
+	}
+	
+	//Encode data.
+	int EncodeData(unsigned char*& pBuff, int& size)
+	{
+		unsigned char* pStart = pBuff;
+		if (pBuff == NULL)
+		{
+			return ERROR_CODES_INVALID_PARAMETER;
+		}
+		int tag = (pBuff[0] & 0xFF);
+		if (tag != 0xA1)
+		{
+			return ERROR_CODES_INVALID_PARAMETER;
+		}
+		++pBuff;
+		//Get length.
+		int len = *pBuff++ & 0xFF;
+		if (size < len)
+		{
+			return ERROR_CODES_ENCODING_FAILED;
+		}
+		pBuff++;
+		len = *pBuff++ & 0xFF;
+		UseLN = memcmp(pBuff, LogicalNameObjectID, 7) == 0;
+		pBuff += 7;
+		size -= (pBuff - pStart);
+		return ERROR_CODES_OK;
 	}
 
-	void Update(CGXDLMSObject* pObj, int attributeIndex)
-    {
-        m_ObjectType = pObj->GetObjectType();
-        pObj->GetLogicalName(m_LogicalName);
-        m_AttributeIndex = attributeIndex;
-    }
-
-    OBJECT_TYPE GetObjectType()
-    {
-        return m_ObjectType;
-    }
-    void SetObjectType(OBJECT_TYPE value)
-    {
-        m_ObjectType = value;
-    }
-
-    basic_string<char> GetLogicalName()
-    {
-        return m_LogicalName;
-    }
-    void SetLogicalName(basic_string<char> value)
-    {
-        m_LogicalName = value;
-    }
-
-    int GetAttributeIndex()
-    {
-        return m_AttributeIndex;
-    }
-    void SetAttributeIndex(int value)
-    {
-        m_AttributeIndex = value;
-    }
+	bool UseLN;
 };

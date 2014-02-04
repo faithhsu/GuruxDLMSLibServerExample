@@ -65,9 +65,9 @@ public:
 	}
 
 	int Init(int port);
-	int OnRead(CGXObject* pItem, int index, CGXDLMSVariant& value, DLMS_DATA_TYPE& type);
-	int OnWrite(CGXObject* pItem, int index, CGXDLMSVariant& value);
-	int OnAction(CGXObject* pItem, int index, CGXDLMSVariant& data);
+	int OnRead(CGXDLMSObject* pItem, int index, CGXDLMSVariant& value, DLMS_DATA_TYPE& type);
+	int OnWrite(CGXDLMSObject* pItem, int index, CGXDLMSVariant& value);
+	int OnAction(CGXDLMSObject* pItem, int index, CGXDLMSVariant& data);
 	int OnInvalidConnection();
 
 	void OnClientConnected(IGXMedia* pSender, CConnectionEventArgs& e)
@@ -105,7 +105,7 @@ public:
         //Reply is null if we do not want to send any data to the client.
         //This is done if client try to make connection with wrong server or client address.
         if (size != 0)
-        {
+        {			
             m_Media.Send(pReply, size, e.getSenderInfo());
         }
 	}
