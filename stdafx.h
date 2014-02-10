@@ -40,7 +40,7 @@
 #include <vector>
 using namespace std;
 
-#ifdef WIN32 //Windows includes
+#if defined(_WIN32) || defined(_WIN64)//Windows includes
     #include <tchar.h>
     #include <conio.h>
 	#include <Winsock.h> //Add support for sockets	

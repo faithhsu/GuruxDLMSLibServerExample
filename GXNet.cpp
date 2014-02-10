@@ -185,7 +185,7 @@ void ListenerThread(void* pVoid)
 	CGXNet* pNet = (CGXNet*) pVoid;
 	sockaddr_in add = {0};
 	int ret;
-#ifdef WIN32
+#if defined(_WIN32) || defined(_WIN64)//Windows includes
 	int len;
 	int AddrLen = sizeof(add);
 #else
@@ -285,7 +285,7 @@ void * UnixListenerThread(void * pVoid)
 
 int CGXNet::Open()
 {
-#ifdef WIN32
+#if defined(_WIN32) || defined(_WIN64)//Windows includes
 	WSADATA wsaData; 	
 	if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
 	{
@@ -330,7 +330,7 @@ int CGXNet::Open()
 		sockaddr_in add = {0};
 		add.sin_port = htons(m_Port);
 		add.sin_addr.s_addr = htonl(INADDR_ANY);
-#ifdef WIN32
+#if defined(_WIN32) || defined(_WIN64)//Windows includes
 		add.sin_family = AF_INET;
 #else
 		add.sin_family = AF_INET;
@@ -372,7 +372,7 @@ int CGXNet::Open()
         }
 		sockaddr_in add;
 		add.sin_port = htons(m_Port);
-#ifdef WIN32
+#if defined(_WIN32) || defined(_WIN64)//Windows includes
 		add.sin_family = AF_INET;
 #else
 		add.sin_family = AF_INET;
@@ -398,7 +398,7 @@ int CGXNet::Open()
 			return ShowError("connect ");
 		};
 	}
-#ifdef WIN32
+#if defined(_WIN32) || defined(_WIN64)//Windows includes
 	HANDLE m_hConnect = (HANDLE) _beginthread(ListenerThread, 0, (LPVOID) this);
 #else
 	pthread_t iThreadId;

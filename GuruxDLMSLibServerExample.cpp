@@ -38,7 +38,7 @@
 #include "GXDLMSServerSN_47.h"
 #include "GXDLMSServerLN_47.h"
 
-#ifdef WIN32
+#if defined(_WIN32) || defined(_WIN64)//Windows includes
 int _tmain(int argc, _TCHAR* argv[])
 #else
 int main( int argc, char* argv[] )
