@@ -66,7 +66,7 @@ public:
 
 	int Init(int port);
 	int OnRead(CGXDLMSObject* pItem, int index, CGXDLMSVariant& value, DLMS_DATA_TYPE& type);
-	int OnWrite(CGXDLMSObject* pItem, int index, CGXDLMSVariant& value);
+	int OnWrite(CGXDLMSObject* pItem, int index, int selector, CGXDLMSVariant& value);
 	int OnAction(CGXDLMSObject* pItem, int index, CGXDLMSVariant& data);
 	int OnInvalidConnection();
 
@@ -101,11 +101,14 @@ public:
 	{
 		unsigned char* pReply = NULL;
 		int size = 0;
+		printf("<- %s\r\n", GXHelpers::bytesToHex(&e.getData()[0], e.getData().size()).c_str());
+
 		HandleRequest(e.getData(), pReply, size);
         //Reply is null if we do not want to send any data to the client.
         //This is done if client try to make connection with wrong server or client address.
         if (size != 0)
-        {			
+        {		
+			printf("-> %s\r\n", GXHelpers::bytesToHex(pReply, size).c_str());
             m_Media.Send(pReply, size, e.getSenderInfo());
         }
 	}

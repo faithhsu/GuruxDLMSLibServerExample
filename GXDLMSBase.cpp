@@ -328,12 +328,14 @@ int CGXDLMSBase::OnRead(CGXDLMSObject* pItem, int index, CGXDLMSVariant& value, 
 			value.vt = DLMS_DATA_TYPE_ARRAY;			
 			pRm->GetThresholds().clear();
 			pRm->GetThresholds().push_back(rand() % 100 + 1);
-			return pRm->GetValue(index, NULL, 0, value);
+			CGXDLMSVariant null;
+			return pRm->GetValue(index, 0, null, value);
 		}
     }
     else
     {
-		int ret = ((IGXDLMSBase*) pItem)->GetValue(index, NULL, 0, value);
+		CGXDLMSVariant null;
+		int ret = ((IGXDLMSBase*) pItem)->GetValue(index, 0, null, value);
 		if (ret != ERROR_CODES_OK)
 		{
 			return ret;
@@ -370,7 +372,7 @@ int CGXDLMSBase::OnRead(CGXDLMSObject* pItem, int index, CGXDLMSVariant& value, 
 /////////////////////////////////////////////////////////////////////////////
 // 
 /////////////////////////////////////////////////////////////////////////////
-int CGXDLMSBase::OnWrite(CGXDLMSObject* pItem, int index, CGXDLMSVariant& value)
+int CGXDLMSBase::OnWrite(CGXDLMSObject* pItem, int index, int selector, CGXDLMSVariant& value)
 {
 	return ERROR_CODES_FALSE;
 }
